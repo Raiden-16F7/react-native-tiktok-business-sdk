@@ -5,6 +5,7 @@ import com.tiktok.TikTokBusinessSdk
 import com.tiktok.appevents.base.EventName
 import com.tiktok.appevents.base.TTBaseEvent
 import com.tiktok.appevents.contents.*
+import com.facebook.react.bridge.UiThreadUtil
 
 class TikTokBusinessModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -105,29 +106,27 @@ class TikTokBusinessModule(reactContext: ReactApplicationContext) :
         if (contentsArray != null && contentsArray.size() > 0) {
           val contentsList = mutableListOf<TTContentParams>()
           for (i in 0 until contentsArray.size()) {
-            val contentMap = contentsArray.getMap(i)
-            if (contentMap != null) {
-              val contentBuilder = TTContentParams.newBuilder()
-              if (contentMap.hasKey("CONTENT_ID") && contentMap.getType("CONTENT_ID") == ReadableType.String) {
-                contentBuilder.setContentId(contentMap.getString("CONTENT_ID"))
-              }
-              if (contentMap.hasKey("CONTENT_CATEGORY") && contentMap.getType("CONTENT_CATEGORY") == ReadableType.String) {
-                contentBuilder.setContentCategory(contentMap.getString("CONTENT_CATEGORY"))
-              }
-              if (contentMap.hasKey("BRAND") && contentMap.getType("BRAND") == ReadableType.String) {
-                contentBuilder.setBrand(contentMap.getString("BRAND"))
-              }
-              if (contentMap.hasKey("PRICE") && contentMap.getType("PRICE") == ReadableType.Number) {
-                contentBuilder.setPrice(contentMap.getDouble("PRICE").toFloat())
-              }
-              if (contentMap.hasKey("QUANTITY") && contentMap.getType("QUANTITY") == ReadableType.Number) {
-                contentBuilder.setQuantity(contentMap.getInt("QUANTITY"))
-              }
-              if (contentMap.hasKey("CONTENT_NAME") && contentMap.getType("CONTENT_NAME") == ReadableType.String) {
-                contentBuilder.setContentName(contentMap.getString("CONTENT_NAME"))
-              }
-              contentsList.add(contentBuilder.build())
+            val contentMap = contentsArray.getMap(i) ?: continue  // Skip if null
+            val contentBuilder = TTContentParams.newBuilder()
+            if (contentMap.hasKey("CONTENT_ID") && contentMap.getType("CONTENT_ID") == ReadableType.String) {
+              contentBuilder.setContentId(contentMap.getString("CONTENT_ID"))
             }
+            if (contentMap.hasKey("CONTENT_CATEGORY") && contentMap.getType("CONTENT_CATEGORY") == ReadableType.String) {
+              contentBuilder.setContentCategory(contentMap.getString("CONTENT_CATEGORY"))
+            }
+            if (contentMap.hasKey("BRAND") && contentMap.getType("BRAND") == ReadableType.String) {
+              contentBuilder.setBrand(contentMap.getString("BRAND"))
+            }
+            if (contentMap.hasKey("PRICE") && contentMap.getType("PRICE") == ReadableType.Number) {
+              contentBuilder.setPrice(contentMap.getDouble("PRICE").toFloat())
+            }
+            if (contentMap.hasKey("QUANTITY") && contentMap.getType("QUANTITY") == ReadableType.Number) {
+              contentBuilder.setQuantity(contentMap.getInt("QUANTITY"))
+            }
+            if (contentMap.hasKey("CONTENT_NAME") && contentMap.getType("CONTENT_NAME") == ReadableType.String) {
+              contentBuilder.setContentName(contentMap.getString("CONTENT_NAME"))
+            }
+            contentsList.add(contentBuilder.build())
           }
           // Set all content items via varargs
           builder.setContents(*contentsList.toTypedArray())
@@ -164,22 +163,42 @@ class TikTokBusinessModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
-  fun initializeSdk(appId: String, ttAppId: String, debug: Boolean?) {
-    val configBuilder =
-      TikTokBusinessSdk.TTConfig(reactApplicationContext).setAppId(appId).setTTAppId(ttAppId)
-
-    if (debug == true) {
-      configBuilder.openDebugMode().setLogLevel(TikTokBusinessSdk.LogLevel.DEBUG)
+  fun initializeSdk(appId: String, ttAppId: String, debug: Boolean) {
+    val currentActivity = currentActivity
+    if (currentActivity == null) {
+        return
     }
 
-    TikTokBusinessSdk.initializeSdk(configBuilder, object : TikTokBusinessSdk.TTInitCallback {
-      override fun success() {
-        TikTokBusinessSdk.startTrack()
-      }
+    currentActivity.runOnUiThread {
+        try {
+            if (appId.isEmpty() || ttAppId.isEmpty()) {
+                throw Exception("appId and ttAppId are required")
+            }
 
-      override fun fail(code: Int, msg: String) {
-      }
-    })
+            // Create configuration using application context to prevent memory leaks
+            val configBuilder = TikTokBusinessSdk.TTConfig(reactApplicationContext.applicationContext)
+                .setAppId(appId)
+                .setTTAppId(ttAppId)
+
+            if (debug) {
+                configBuilder.openDebugMode()
+                    .setLogLevel(TikTokBusinessSdk.LogLevel.DEBUG)
+            }
+
+            // Initialize SDK with callback
+            TikTokBusinessSdk.initializeSdk(configBuilder, object : TikTokBusinessSdk.TTInitCallback {
+                override fun success() {
+                    TikTokBusinessSdk.startTrack()
+                }
+
+                override fun fail(code: Int, msg: String) {
+                    // Optional: Add error handling here
+                }
+            })
+        } catch (e: Exception) {
+            // Optional: Add error handling here
+        }
+    }
   }
 
   companion object {
